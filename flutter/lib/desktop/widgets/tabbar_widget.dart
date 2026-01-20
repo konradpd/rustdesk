@@ -584,8 +584,9 @@ class _DesktopTabState extends State<DesktopTab>
             color: kColorCanvas,
             child: GridView(
               padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 600,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount:
+                    max((sqrt(state.value.tabs.length).ceil()).toInt(), 1),
                 childAspectRatio: 16 / 9,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
