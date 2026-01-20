@@ -138,6 +138,8 @@ class _RemotePageState extends State<RemotePage>
       display: widget.display,
       displays: widget.displays,
     );
+    // Explicitly notify FFI about the controller presence if needed, or just rely on the UI rebuilds.
+    // We will handle grid mode in build method.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       _ffi.dialogManager
@@ -374,6 +376,7 @@ class _RemotePageState extends State<RemotePage>
 
     bodyWidget() {
       return Stack(
+        fit: StackFit.expand,
         children: [
           Container(
               color: kColorCanvas,
@@ -391,6 +394,8 @@ class _RemotePageState extends State<RemotePage>
                         });
                       }
                       if (imageFocused) {
+                        // In grid mode, we might want to avoid locking input too aggressively
+                        // but let's keep it standard for now.
                         _ffi.inputModel.enterOrLeave(true);
                       } else {
                         _ffi.inputModel.enterOrLeave(false);
@@ -398,7 +403,9 @@ class _RemotePageState extends State<RemotePage>
                     }
                   },
                   inputModel: _ffi.inputModel,
-                  child: getBodyForDesktop(context))),
+                  child: getBodyForDesktop(
+                      context,
+                      widget.tabController?.isGridMode.value == true))),
           Stack(
             children: [
               _ffi.ffiModel.pi.isSet.isTrue &&
@@ -438,35 +445,52 @@ class _RemotePageState extends State<RemotePage>
       );
     }
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
-      body: Obx(() {
-        final imageReady = _ffi.ffiModel.pi.isSet.isTrue &&
-            _ffi.ffiModel.waitForFirstImage.isFalse;
-        if (imageReady) {
-          // If the privacy mode(disable physical displays) is switched,
-          // we should not dismiss the dialog immediately.
-          if (DateTime.now().difference(togglePrivacyModeTime) >
-              const Duration(milliseconds: 3000)) {
-            // `dismissAll()` is to ensure that the state is clean.
-            // It's ok to call dismissAll() here.
-            _ffi.dialogManager.dismissAll();
-            // Recreate the block state to refresh the state.
-            _blockableOverlayState = BlockableOverlayState();
-            _blockableOverlayState.applyFfi(_ffi);
+    return Obx(() {
+      if (widget.tabController?.isGridMode.value == true) {
+        return MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: _ffi.ffiModel),
+            ChangeNotifierProvider.value(value: _ffi.imageModel),
+            ChangeNotifierProvider.value(value: _ffi.cursorModel),
+            ChangeNotifierProvider.value(value: _ffi.canvasModel),
+            ChangeNotifierProvider.value(value: _ffi.recordingModel),
+          ],
+          child: Scaffold(
+            body: bodyWidget(), 
+            backgroundColor: kColorCanvas,
+          ), 
+        );
+      }
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.background,
+        body: Obx(() {
+          final imageReady = _ffi.ffiModel.pi.isSet.isTrue &&
+              _ffi.ffiModel.waitForFirstImage.isFalse;
+          if (imageReady) {
+            // If the privacy mode(disable physical displays) is switched,
+            // we should not dismiss the dialog immediately.
+            if (DateTime.now().difference(togglePrivacyModeTime) >
+                const Duration(milliseconds: 3000)) {
+              // `dismissAll()` is to ensure that the state is clean.
+              // It's ok to call dismissAll() here.
+              _ffi.dialogManager.dismissAll();
+              // Recreate the block state to refresh the state.
+              _blockableOverlayState = BlockableOverlayState();
+              _blockableOverlayState.applyFfi(_ffi);
+            }
+            // Block the whole `bodyWidget()` when dialog shows.
+            return BlockableOverlay(
+              underlying: bodyWidget(),
+              state: _blockableOverlayState,
+            );
+          } else {
+            // `_blockableOverlayState` is not recreated here.
+            // The toolbar's block state won't work properly when reconnecting, but that's okay.
+            return bodyWidget();
           }
-          // Block the whole `bodyWidget()` when dialog shows.
-          return BlockableOverlay(
-            underlying: bodyWidget(),
-            state: _blockableOverlayState,
-          );
-        } else {
-          // `_blockableOverlayState` is not recreated here.
-          // The toolbar's block state won't work properly when reconnecting, but that's okay.
-          return bodyWidget();
-        }
-      }),
-    );
+        }),
+      );
+    });
   }
 
   @override
@@ -570,7 +594,7 @@ class _RemotePageState extends State<RemotePage>
     );
   }
 
-  Widget getBodyForDesktop(BuildContext context) {
+  Widget getBodyForDesktop(BuildContext context, bool isGridMode) {
     var paints = <Widget>[
       MouseRegion(
         onEnter: (evt) {
@@ -582,6 +606,7 @@ class _RemotePageState extends State<RemotePage>
         child: _ViewStyleUpdater(
           canvasModel: _ffi.canvasModel,
           inputModel: _ffi.inputModel,
+          isGridMode: isGridMode,
           child: Builder(builder: (context) {
             final peerDisplay = CurrentDisplayState.find(widget.id);
             return Obx(
@@ -625,6 +650,7 @@ class _RemotePageState extends State<RemotePage>
       ),
     );
     return Stack(
+      fit: StackFit.expand,
       children: paints,
     );
   }
@@ -640,12 +666,14 @@ class _ViewStyleUpdater extends StatefulWidget {
   final CanvasModel canvasModel;
   final InputModel inputModel;
   final Widget child;
+  final bool isGridMode;
 
   const _ViewStyleUpdater({
     Key? key,
     required this.canvasModel,
     required this.inputModel,
     required this.child,
+    this.isGridMode = false,
   }) : super(key: key);
 
   @override
@@ -678,7 +706,9 @@ class _ViewStyleUpdaterState extends State<_ViewStyleUpdater> {
               _callbackScheduled = false;
               final currentSize = _lastSize;
               if (mounted && currentSize != null) {
-                widget.canvasModel.updateViewStyle();
+                widget.canvasModel.setWidgetSize(currentSize);
+                widget.canvasModel
+                    .updateViewStyle(forceAdaptive: widget.isGridMode);
                 widget.inputModel.updateImageWidgetSize(currentSize);
               }
             });

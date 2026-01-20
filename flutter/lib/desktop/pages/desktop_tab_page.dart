@@ -96,14 +96,27 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
             backgroundColor: Theme.of(context).colorScheme.background,
             body: DesktopTab(
               controller: tabController,
-              tail: Offstage(
-                offstage: bind.isIncomingOnly() || bind.isDisableSettings(),
-                child: ActionIcon(
-                  message: 'Settings',
-                  icon: IconFont.menu,
-                  onTap: DesktopTabPage.onAddSetting,
-                  isClose: false,
-                ),
+              tail: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Obx(() => ActionIcon(
+                        message: 'Toggle Classroom View',
+                        icon: tabController.isGridMode.value
+                            ? Icons.view_headline
+                            : Icons.grid_view,
+                        onTap: () => tabController.isGridMode.toggle(),
+                        isClose: false,
+                      )),
+                  Offstage(
+                    offstage: bind.isIncomingOnly() || bind.isDisableSettings(),
+                    child: ActionIcon(
+                      message: 'Settings',
+                      icon: IconFont.menu,
+                      onTap: DesktopTabPage.onAddSetting,
+                      isClose: false,
+                    ),
+                  ),
+                ],
               ),
             )));
     return isMacOS || kUseCompatibleUiMode

@@ -1,9 +1,10 @@
-import 'dart:async';
 import 'dart:math';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:dynamic_layouts/dynamic_layouts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide TabBarTheme;
 import 'package:flutter_hbb/common.dart';
@@ -95,6 +96,7 @@ CancelFunc showRightMenu(ToastBuilder builder,
 class DesktopTabController {
   final state = DesktopTabState().obs;
   final DesktopTabType tabType;
+  final isGridMode = false.obs;
 
   /// index, key
   Function(int, String)? onRemoved;
@@ -574,8 +576,35 @@ class _DesktopTabState extends State<DesktopTab>
                 return newList;
               }
             }())));
-    if (tabType == DesktopTabType.remoteScreen) {
-      return Container(color: kColorCanvas, child: child);
+    if (tabType == DesktopTabType.remoteScreen ||
+        tabType == DesktopTabType.main) {
+      return Obx(() {
+        if (controller.isGridMode.value) {
+          return Container(
+            color: kColorCanvas,
+            child: GridView(
+              padding: const EdgeInsets.all(10),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 600,
+                childAspectRatio: 16 / 9,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+              ),
+              children: state.value.tabs.map((tab) {
+                return Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.withOpacity(0.5)),
+                    color: Colors.black,
+                  ),
+                  child: ClipRect(child: tab.page),
+                );
+              }).toList(),
+            ),
+          );
+        } else {
+          return Container(color: kColorCanvas, child: child);
+        }
+      });
     } else {
       return child;
     }

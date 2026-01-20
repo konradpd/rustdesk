@@ -8,6 +8,7 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
+import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/desktop/pages/remote_page.dart';
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
@@ -90,7 +91,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           tabController.closeBy(peerId!);
         },
         page: RemotePage(
-          key: ValueKey(peerId),
+          key: GlobalObjectKey(peerId!),
           id: peerId!,
           sessionId: sessionId == null ? null : SessionID(sessionId),
           tabWindowId: tabWindowId,
@@ -138,6 +139,17 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         tail: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Obx(() => ActionIcon(
+                  message: 'Toggle Classroom View',
+                  icon: tabController.isGridMode.value
+                      ? Icons.view_headline
+                      : Icons.grid_view,
+                  onTap: () {
+                    debugPrint("Toggling Grid Mode: ${!tabController.isGridMode.value}");
+                    tabController.isGridMode.toggle();
+                  },
+                  isClose: false,
+                )),
             _RelativeMouseModeHint(tabController: tabController),
             const AddButton(),
           ],
@@ -313,6 +325,18 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       }
     }
 
+    menu.add(MenuEntryButton<String>(
+      childBuilder: (TextStyle? style) => Text(
+        'Set Interest Region',
+        style: style,
+      ),
+      proc: () {
+        cancelFunc();
+        showRoiDialog(ffi.canvasModel);
+      },
+      padding: padding,
+    ));
+
     menu.addAll([
       MenuEntryDivider<String>(),
       MenuEntryButton<String>(
@@ -463,7 +487,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           tabController.closeBy(id);
         },
         page: RemotePage(
-          key: ValueKey(id),
+          key: GlobalObjectKey(id),
           id: id,
           sessionId: sessionId == null ? null : SessionID(sessionId),
           tabWindowId: tabWindowId,
@@ -554,6 +578,68 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     }
     _update_remote_count();
     return returnValue;
+  }
+
+
+  void showRoiDialog(CanvasModel canvasModel) {
+    final roi = canvasModel.roi;
+    final x = TextEditingController(text: roi?.left.toInt().toString() ?? '0');
+    final y = TextEditingController(text: roi?.top.toInt().toString() ?? '0');
+    final w = TextEditingController(text: roi?.width.toInt().toString() ?? '0');
+    final h = TextEditingController(text: roi?.height.toInt().toString() ?? '0');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Set Interest Region'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: x,
+              decoration: InputDecoration(labelText: 'X'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: y,
+              decoration: InputDecoration(labelText: 'Y'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: w,
+              decoration: InputDecoration(labelText: 'Width (0 for reset)'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: h,
+              decoration: InputDecoration(labelText: 'Height'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(translate('Cancel')),
+          ),
+          TextButton(
+            onPressed: () {
+              final dx = double.tryParse(x.text) ?? 0;
+              final dy = double.tryParse(y.text) ?? 0;
+              final dw = double.tryParse(w.text) ?? 0;
+              final dh = double.tryParse(h.text) ?? 0;
+              if (dw <= 0 || dh <= 0) {
+                canvasModel.setRoi(null);
+              } else {
+                canvasModel.setRoi(Rect.fromLTWH(dx, dy, dw, dh));
+              }
+              Navigator.pop(context);
+            },
+            child: Text(translate('OK')),
+          ),
+        ],
+      ),
+    );
   }
 }
 

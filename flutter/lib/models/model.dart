@@ -2111,6 +2111,8 @@ class CanvasModel with ChangeNotifier {
   // to avoid hammering a non-functional Bump Mouse
   bool _bumpMouseIsWorking = true;
   ViewStyle _lastViewStyle = ViewStyle.defaultViewStyle();
+  Rect? _roi;
+  Size? _widgetSize;
 
   Timer? _timerMobileFocusCanvasCursor;
 
@@ -2137,6 +2139,16 @@ class CanvasModel with ChangeNotifier {
   ScrollStyle get scrollStyle => _scrollStyle;
   ViewStyle get viewStyle => _lastViewStyle;
   RxBool get imageOverflow => _imageOverflow;
+  Rect? get roi => _roi;
+
+  void setRoi(Rect? rect) {
+    _roi = rect;
+    updateViewStyle();
+  }
+
+  void setWidgetSize(Size size) {
+    _widgetSize = size;
+  }
 
   _resetScroll() => setScrollPercent(0.0, 0.0);
 
@@ -2191,12 +2203,25 @@ class CanvasModel with ChangeNotifier {
     return max(bottom - MediaQueryData.fromView(ui.window).padding.top, 0);
   }
 
-  updateSize() => _size = getSize();
+  updateSize() {
+    if (_widgetSize != null) {
+      _size = _widgetSize!;
+    } else {
+      _size = getSize();
+    }
+  }
 
-  updateViewStyle({refreshMousePos = true, notify = true}) async {
-    final style = await bind.sessionGetViewStyle(sessionId: sessionId);
+  updateViewStyle(
+      {refreshMousePos = true,
+      notify = true,
+      bool forceAdaptive = false}) async {
+    var style = await bind.sessionGetViewStyle(sessionId: sessionId);
     if (style == null) {
       return;
+    }
+
+    if (forceAdaptive || _roi != null) {
+      style = kRemoteViewStyleAdaptive;
     }
 
     updateSize();
@@ -2260,6 +2285,10 @@ class CanvasModel with ChangeNotifier {
   _resetCanvasOffset(int displayWidth, int displayHeight) {
     _x = (size.width - displayWidth * _scale) / 2;
     _y = (size.height - displayHeight * _scale) / 2;
+    if (_roi != null) {
+      _x -= _roi!.left * _scale;
+      _y -= _roi!.top * _scale;
+    }
     if (isMobile) {
       _moveToCenterCursor();
     }
@@ -2320,6 +2349,7 @@ class CanvasModel with ChangeNotifier {
     final defaultWidth = (isDesktop || isWebDesktop)
         ? kDesktopDefaultDisplayWidth
         : kMobileDefaultDisplayWidth;
+    if (_roi != null) return _roi!.width.toInt();
     return parent.target?.ffiModel.rect?.width.toInt() ?? defaultWidth;
   }
 
@@ -2327,6 +2357,7 @@ class CanvasModel with ChangeNotifier {
     final defaultHeight = (isDesktop || isWebDesktop)
         ? kDesktopDefaultDisplayHeight
         : kMobileDefaultDisplayHeight;
+    if (_roi != null) return _roi!.height.toInt();
     return parent.target?.ffiModel.rect?.height.toInt() ?? defaultHeight;
   }
 
@@ -2576,6 +2607,7 @@ class CanvasModel with ChangeNotifier {
     _x = 0;
     _y = 0;
     _scale = 1.0;
+    _widgetSize = null;
     _lastViewStyle = ViewStyle.defaultViewStyle();
     _timerMobileFocusCanvasCursor?.cancel();
   }
