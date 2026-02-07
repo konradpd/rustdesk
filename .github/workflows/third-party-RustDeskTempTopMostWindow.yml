@@ -53,7 +53,6 @@ jobs:
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@master
-        if: ${{ inputs.upload-artifact }}
         with:
             name: topmostwindow-artifacts
             path: |
