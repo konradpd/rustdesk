@@ -451,6 +451,65 @@ lazy_static::lazy_static! {
     // Track connections that are currently using relative mouse movement.
     // Used to disable whiteboard/cursor display for all events while in relative mode.
     static ref RELATIVE_MOUSE_CONNS: Arc<Mutex<std::collections::HashSet<i32>>> = Default::default();
+    #[cfg(windows)]
+    static ref INTERCEPTION_CTX: Arc<Mutex<Option<crate::platform::interception::InterceptionContext>>> = {
+         Arc::new(Mutex::new(None))
+    };
+    #[cfg(windows)]
+    static ref INTERCEPTION_MOUSE: Arc<Mutex<Option<i32>>> = Default::default();
+    #[cfg(windows)]
+    static ref INTERCEPTION_KEYBOARD: Arc<Mutex<Option<i32>>> = Default::default();
+}
+
+#[cfg(windows)]
+fn ensure_interception_ctx() -> Option<(Arc<Mutex<Option<crate::platform::interception::InterceptionContext>>>, i32, i32)> {
+    // Check if enabled in config
+    // not working
+    // let enabled = hbb_common::config::Config::get_option("enable-interception-input") == "Y";
+    let enabled = true;
+    if !enabled {
+         return None;
+    }
+    
+    let mut ctx_guard = INTERCEPTION_CTX.lock().unwrap();
+    if ctx_guard.is_none() {
+        if let Some(ctx) = crate::platform::interception::Interception::new() {
+            *ctx_guard = Some(crate::platform::interception::InterceptionContext(ctx));
+        } else {
+            // Failed to init (maybe not admin)
+            return None;
+        }
+    }
+    
+    // We have a context, check mouse
+    let mut mouse_guard = INTERCEPTION_MOUSE.lock().unwrap();
+    if mouse_guard.is_none() {
+        if let Some(ctx) = ctx_guard.as_ref() {
+            // Mimic user logic: find first mouse
+             if let Some(dev) = crate::platform::interception::find_first_device(ctx, crate::platform::interception::DeviceKind::Mouse) {
+                 *mouse_guard = Some(dev);
+             }
+        }
+    }
+
+    // Check keyboard
+    let mut kbd_guard = INTERCEPTION_KEYBOARD.lock().unwrap();
+    if kbd_guard.is_none() {
+        if let Some(ctx) = ctx_guard.as_ref() {
+             if let Some(dev) = crate::platform::interception::find_first_device(ctx, crate::platform::interception::DeviceKind::Keyboard) {
+                 *kbd_guard = Some(dev);
+             }
+        }
+    }
+    
+    match (*mouse_guard, *kbd_guard) {
+        (Some(mouse_dev), Some(kbd_dev)) => Some((INTERCEPTION_CTX.clone(), mouse_dev, kbd_dev)),
+        (Some(mouse_dev), None) => {
+             Some((INTERCEPTION_CTX.clone(), mouse_dev, 0))
+        },
+        (None, Some(kbd_dev)) => Some((INTERCEPTION_CTX.clone(), 0, kbd_dev)),
+        _ => None,
+    }
 }
 
 #[inline]
@@ -1057,6 +1116,80 @@ pub fn handle_mouse_simulation_(evt: &MouseEvent, conn: i32) {
 
     #[cfg(windows)]
     crate::platform::windows::try_change_desktop();
+
+    #[cfg(windows)]
+    if let Some((ctx_arc, mouse_dev, _)) = ensure_interception_ctx() {
+        // Use interception
+        if let Some(ctx) = ctx_arc.lock().unwrap().as_ref() {
+             use crate::platform::interception::{mouse_move, mouse_down, mouse_up, MouseButton, mouse_move_relative, mouse_scroll};
+             
+             let evt_type = evt.mask & MOUSE_TYPE_MASK;
+             match evt_type {
+                MOUSE_TYPE_MOVE => {
+                    let buttons = evt.mask >> 3;
+                    let mut sent_relative = false;
+                    if buttons & MOUSE_BUTTON_RIGHT != 0 {
+                          let lock = LATEST_PEER_INPUT_CURSOR.lock().unwrap();
+                          if lock.conn == conn && lock.x != INVALID_CURSOR_POS {
+                              let dx = evt.x - lock.x;
+                              let dy = evt.y - lock.y;
+                              mouse_move_relative(ctx, mouse_dev, dx * 3, dy * 3);
+                              sent_relative = true;
+                          }
+                    }
+                    if !sent_relative {
+                        mouse_move(ctx, mouse_dev, evt.x, evt.y);
+                    }
+                    *LATEST_PEER_INPUT_CURSOR.lock().unwrap() = Input {
+                        conn,
+                        time: get_time(),
+                        x: evt.x,
+                        y: evt.y,
+                    };
+                }
+                MOUSE_TYPE_MOVE_RELATIVE => {
+                    // Clamp logic same as enigo path
+                    const MAX_RELATIVE_MOUSE_DELTA: i32 = 10000;
+                    let dx = evt.x.clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
+                    let dy = evt.y.clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
+                    mouse_move_relative(ctx, mouse_dev, dx, dy);
+                }
+                MOUSE_TYPE_DOWN => {
+                     // Map buttons
+                     let buttons = evt.mask >> 3;
+                     let btn = match buttons {
+                         MOUSE_BUTTON_LEFT => Some(MouseButton::Left),
+                         MOUSE_BUTTON_RIGHT => Some(MouseButton::Right),
+                         MOUSE_BUTTON_WHEEL => Some(MouseButton::Middle),
+                         _ => None,
+                     };
+                     if let Some(b) = btn {
+                            mouse_down(ctx, mouse_dev, b);
+                     }
+                }
+                MOUSE_TYPE_UP => {
+                     let buttons = evt.mask >> 3;
+                     let btn = match buttons {
+                         MOUSE_BUTTON_LEFT => Some(MouseButton::Left),
+                         MOUSE_BUTTON_RIGHT => Some(MouseButton::Right),
+                         MOUSE_BUTTON_WHEEL => Some(MouseButton::Middle),
+                         _ => None,
+                     };
+                     if let Some(b) = btn {
+                            mouse_up(ctx, mouse_dev, b);
+                     }
+                }
+                MOUSE_TYPE_WHEEL => {
+                    if evt.y != 0 {
+                        mouse_scroll(ctx, mouse_dev, evt.y * WHEEL_DELTA as i32);
+                    }
+                }
+                _ => {}
+             }
+             return;
+        }
+    }
+
     let buttons = evt.mask >> 3;
     let evt_type = evt.mask & MOUSE_TYPE_MASK;
     let mut en = ENIGO.lock().unwrap();
@@ -1440,6 +1573,43 @@ fn release_capslock() {
 #[cfg(not(target_os = "macos"))]
 #[inline]
 fn simulate_(event_type: &EventType) {
+    #[cfg(windows)]
+    if let Some((ctx_arc, _, kbd_dev)) = ensure_interception_ctx() {
+        if kbd_dev > 0 {
+            if let Some(ctx) = ctx_arc.lock().unwrap().as_ref() {
+                 use crate::platform::interception::{key_stroke, KeyState};
+                 let convert = |key: &rdev::Key, down: bool| -> Option<(u16, KeyState)> {
+                    match key {
+                        rdev::Key::RawKey(raw) => match raw {
+                            rdev::RawKey::ScanCode(sc) => {
+                                let mut code = *sc as u16;
+                                let mut state = if down { KeyState::empty() } else { KeyState::UP };
+                                if code & 0xFF00 == 0xE000 {
+                                    code = code & 0xFF;
+                                    state.insert(KeyState::E0);
+                                }
+                                Some((code, state))
+                            }
+                            _ => None, 
+                        },
+                        _ => None,
+                    }
+                };
+                
+                let res = match event_type {
+                    EventType::KeyPress(key) => convert(key, true),
+                    EventType::KeyRelease(key) => convert(key, false),
+                    _ => None,
+                };
+
+                if let Some((code, state)) = res {
+                    key_stroke(ctx, kbd_dev, code, state);
+                    return;
+                }
+            }
+        }
+    }
+
     match rdev::simulate(&event_type) {
         Ok(()) => (),
         Err(_simulate_error) => {

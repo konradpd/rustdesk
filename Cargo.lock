@@ -2517,6 +2517,7 @@ version = "0.0.14"
 dependencies = [
  "core-graphics 0.22.3",
  "hbb_common",
+ "libxdo-sys",
  "log",
  "objc",
  "pkg-config",
@@ -3720,6 +3721,7 @@ dependencies = [
  "httparse",
  "lazy_static",
  "libc",
+ "libloading 0.8.4",
  "log",
  "mac_address",
  "machine-uid",
@@ -3755,6 +3757,7 @@ dependencies = [
  "webrtc",
  "whoami",
  "winapi 0.3.9",
+ "x11 2.21.0",
  "zstd 0.13.1",
 ]
 
@@ -4131,6 +4134,24 @@ checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if 1.0.0",
 ]
+
+[[package]]
+name = "interception"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76b4dc218c6fdcf3c6e9807b892a1100396d936e56b391e533a71e3ad02b17b3"
+dependencies = [
+ "bitflags 1.3.2",
+ "interception-sys",
+ "num_enum 0.5.11",
+ "serde 1.0.228",
+]
+
+[[package]]
+name = "interception-sys"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abe875cf6439eb5d98f0fdbcc6128fdef4870c47e0f898735105ff77685dfcd1"
 
 [[package]]
 name = "interceptor"
@@ -4546,11 +4567,8 @@ dependencies = [
 [[package]]
 name = "libxdo-sys"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db23b9e7e2b7831bbd8aac0bbeeeb7b68cbebc162b227e7052e8e55829a09212"
 dependencies = [
- "libc",
- "x11 2.21.0",
+ "hbb_common",
 ]
 
 [[package]]
@@ -7177,13 +7195,14 @@ dependencies = [
  "image 0.24.9",
  "impersonate_system",
  "include_dir",
+ "interception",
  "jni",
  "kcp-sys",
  "keepawake",
  "lazy_static",
- "libloading 0.8.4",
  "libpulse-binding",
  "libpulse-simple-binding",
+ "libxdo-sys",
  "mac_address",
  "magnum-opus",
  "nix 0.29.0",
