@@ -218,13 +218,13 @@ jobs:
 
       - name: Download RustDeskTempTopMostWindow artifacts
         uses: actions/download-artifact@master
-        if: ${{ inputs.upload-artifact }}
+
         with:
           name: topmostwindow-artifacts
           path: "./rustdesk"
 
       - name: Upload unsigned
-        if: env.UPLOAD_ARTIFACT == 'true'
+
         uses: actions/upload-artifact@master
         with:
           name: rustdesk-unsigned-windows-${{ matrix.job.arch }}
@@ -232,7 +232,7 @@ jobs:
 
       - name: Build self-extracted executable
         shell: bash
-        if: env.UPLOAD_ARTIFACT == 'true'
+
         run: |
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
@@ -246,7 +246,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build msi
-        if: env.UPLOAD_ARTIFACT == 'true'
+
         run: |
           pushd ./res/msi
           python preprocess.py --arp -d ../../rustdesk
@@ -257,7 +257,7 @@ jobs:
 
       - name: Publish Release
         uses: softprops/action-gh-release@v1
-        if: env.UPLOAD_ARTIFACT == 'true'
+
         with:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
