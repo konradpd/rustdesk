@@ -144,7 +144,14 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         ),
         selectedBorderColor: MyTheme.accent,
         pageViewBuilder: (pageView) => pageView,
-        labelGetter: DesktopTab.tablabelGetter,
+        labelGetter: (peerId) {
+          final alias = bind.mainGetPeerOptionSync(id: peerId, key: 'alias');
+          var label = getDesktopTabLabel(peerId, alias);
+          if (label.contains('@')) {
+            label = label.split('@')[0];
+          }
+          return RxString(label);
+        },
         tabBuilder: (key, icon, label, themeConf) => Obx(() {
           final connectionType = ConnectionTypeState.find(key);
           if (!connectionType.isValid()) {
@@ -188,6 +195,14 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                   ).paddingOnly(right: 5),
                 ),
                 label,
+                Obx(() {
+                  final isActive = StateGlobal.instance.audioActiveState[key] ?? false;
+                  // Always show indicator, red for silence, green for active
+                  return Icon(Icons.volume_up,
+                      size: themeConf.iconSize - 4,
+                      color: isActive ? Colors.green : Colors.red)
+                      .paddingOnly(left: 5);
+                }),
                 unreadMessageCountBuilder(UnreadChatCountState.find(key))
                     .marginOnly(left: 4),
               ],

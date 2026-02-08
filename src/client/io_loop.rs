@@ -103,9 +103,14 @@ impl<T: InvokeUiSession> Remote<T> {
         receiver: mpsc::UnboundedReceiver<Data>,
         sender: mpsc::UnboundedSender<Data>,
     ) -> Self {
+        let handler2 = handler.clone();
         Self {
             handler,
-            audio_sender: crate::client::start_audio_thread(),
+            audio_sender: crate::client::start_audio_thread(Some(Box::new(move |level| {
+                let id = handler2.get_id().to_owned();
+                // Directly access ui_handler field to call on_audio_level
+                handler2.ui_handler.on_audio_level(&id, level);
+            }))),
             receiver,
             sender,
             read_jobs: Vec::new(),

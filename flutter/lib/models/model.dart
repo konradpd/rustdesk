@@ -356,6 +356,10 @@ class FfiModel with ChangeNotifier {
         Clipboard.setData(ClipboardData(text: evt['content']));
       } else if (name == 'permission') {
         updatePermission(evt, peerId);
+      } else if (name == 'audio_level') {
+        print('FfiModel received audio_level: ${evt['level']} for $peerId');
+        StateGlobal.instance
+            .updateAudioLevel(peerId, double.parse(evt['level']));
       } else if (name == 'chat_client_mode') {
         parent.target?.chatModel
             .receive(ChatModel.clientModeID, evt['text'] ?? '');

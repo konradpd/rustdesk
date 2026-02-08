@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:get/get.dart';
@@ -33,6 +36,22 @@ class StateGlobal {
   // Key: peerId, Value: true if relative mouse mode is active.
   // Note: This is session-only runtime state, NOT persisted to config.
   final RxMap<String, bool> relativeMouseModeState = <String, bool>{}.obs;
+
+  // Track audio activity for each peer connection.
+  final RxMap<String, bool> audioActiveState = <String, bool>{}.obs;
+  final Map<String, Timer> _audioTimers = {};
+
+  updateAudioLevel(String peerId, double level) {
+    if (level > 0.001) { // Threshold
+      print('StateGlobal audio active for $peerId: $level');
+      audioActiveState[peerId] = true;
+      _audioTimers[peerId]?.cancel();
+      _audioTimers[peerId] = Timer(Duration(seconds: 1), () {
+        audioActiveState[peerId] = false;
+        _audioTimers.remove(peerId);
+      });
+    }
+  }
 
   // Use for desktop -> remote toolbar -> resolution
   final Map<String, Map<int, String?>> _lastResolutionGroupValues = {};
