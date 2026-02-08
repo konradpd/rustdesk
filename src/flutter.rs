@@ -534,6 +534,13 @@ impl SessionHandler {
 }
 
 impl FlutterHandler {
+    /// Handle audio level directly without going through trait dispatch.
+    /// This is a workaround for trait dispatch issues with generics.
+    pub fn handle_audio_level_direct(&self, level: f32) {
+        eprintln!("!!!!! handle_audio_level_direct CALLED: {}", level);
+        self.push_event("audio_level", &[("level", &level.to_string())], &[]);
+    }
+
     /// Push an event to all the event queues.
     /// An event is stored as json in the event queues.
     ///
@@ -1179,6 +1186,16 @@ impl InvokeUiSession for FlutterHandler {
             }
         }
     }
+
+
+    fn on_audio_level(&self, session_id: &str, level: f32) {
+        // session_id here is the Peer ID (IP) from io_loop.
+        // We broadcast to all UI (tabs/windows) sessions associated with this connection (self).
+        let sessions = self.session_handlers.read().unwrap();
+        for key in sessions.keys() {
+             self.push_event_to("audio_level", &[("level", &level.to_string())], &[key]);
+        }
+    }
 }
 
 impl FlutterHandler {
@@ -1262,6 +1279,8 @@ impl FlutterHandler {
             }
         }
     }
+
+
 }
 
 // This function is only used for the default connection session.
@@ -2040,6 +2059,14 @@ pub mod sessions {
     lazy_static::lazy_static! {
         // peer -> peer session, peer session -> ui sessions
         static ref SESSIONS: RwLock<HashMap<(String, ConnType), FlutterSession>> = Default::default();
+    }
+
+    /// Push audio level to all sessions. This bypasses trait dispatch entirely.
+    pub fn push_audio_level(peer_id: &str, level: f32) {
+        eprintln!("!!!!! sessions::push_audio_level called: peer={}, level={}", peer_id, level);
+        if let Some(session) = SESSIONS.read().unwrap().get(&(peer_id.to_string(), ConnType::DEFAULT_CONN)) {
+            session.ui_handler.handle_audio_level_direct(level);
+        }
     }
 
     #[inline]

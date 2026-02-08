@@ -1186,7 +1186,11 @@ pub struct AudioHandler {
     #[cfg(not(target_os = "linux"))]
     device_channel: u16,
     #[cfg(not(target_os = "linux"))]
+    #[cfg(not(target_os = "linux"))]
     ready: Arc<std::sync::Mutex<bool>>,
+    on_audio_level: Option<Box<dyn Fn(f32) + Send>>,
+    audio_level_frame_count: usize,
+    current_max_level: f32,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1410,6 +1414,7 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
+        // println!("handle_frame called");
         #[cfg(not(target_os = "linux"))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
             return;
@@ -1435,6 +1440,28 @@ impl AudioHandler {
                             sample_rate,
                             channels,
                         );
+                    }
+                    if let Some(cb) = &self.on_audio_level {
+                        for i in 0..buffer.len() {
+                            let v = buffer[i].abs();
+                            if v > self.current_max_level {
+                                self.current_max_level = v;
+                            }
+                        }
+
+                        self.audio_level_frame_count += 1;
+                        if self.audio_level_frame_count >= 5 {
+                            // Log every 5 frames regardless of level for debugging
+                            println!("AudioHandler detected level: {}", self.current_max_level);
+                            if self.current_max_level > 0.0001 {
+                               println!("Calling callback with level: {}", self.current_max_level);
+                               cb(self.current_max_level);
+                            }
+                            self.audio_level_frame_count = 0;
+                            self.current_max_level = 0.0;
+                        }
+                    } else {
+                        // println!("on_audio_level callback is None");
                     }
                     if self.channels != self.device_channel {
                         buffer = crate::audio_rechannel(
@@ -2929,10 +2956,11 @@ pub fn start_video_thread<F, T>(
 
 /// Start an audio thread
 /// Return a audio [`MediaSender`]
-pub fn start_audio_thread() -> MediaSender {
+pub fn start_audio_thread(on_audio_level: Option<Box<dyn Fn(f32) + Send>>) -> MediaSender {
     let (audio_sender, audio_receiver) = mpsc::channel::<MediaData>();
     std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();
+        audio_handler.on_audio_level = on_audio_level;
         loop {
             if let Ok(data) = audio_receiver.recv() {
                 match data {

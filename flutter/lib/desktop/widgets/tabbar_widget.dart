@@ -1100,12 +1100,23 @@ class _TabState extends State<_Tab> with RestorationMixin {
           ));
     });
 
+    final audioIndicator = Obx(() {
+      final isActive =
+          StateGlobal.instance.audioActiveState[widget.tabInfoKey] ?? false;
+      return Offstage(
+          offstage: !isActive,
+          child: Icon(Icons.volume_up,
+                  size: _kIconSize - 4, color: MyTheme.accent)
+              .paddingOnly(right: 5));
+    });
+
     Widget getWidgetWithBuilder() {
       if (widget.tabBuilder == null) {
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             icon,
+            audioIndicator,
             labelWidget,
           ],
         );

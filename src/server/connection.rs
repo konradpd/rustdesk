@@ -3075,7 +3075,7 @@ impl Connection {
                         if !self.disable_audio {
                             // Drop the audio sender previously.
                             drop(std::mem::replace(&mut self.audio_sender, None));
-                            self.audio_sender = Some(start_audio_thread());
+                            self.audio_sender = Some(crate::client::start_audio_thread(None));
                             self.audio_sender
                                 .as_ref()
                                 .map(|a| allow_err!(a.send(MediaData::AudioFormat(format))));
