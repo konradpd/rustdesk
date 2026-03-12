@@ -451,13 +451,14 @@ lazy_static::lazy_static! {
     // Track connections that are currently using relative mouse movement.
     // Used to disable whiteboard/cursor display for all events while in relative mode.
     static ref RELATIVE_MOUSE_CONNS: Arc<Mutex<std::collections::HashSet<i32>>> = Default::default();
-    #[cfg(windows)]
+}
+
+#[cfg(windows)]
+lazy_static::lazy_static! {
     static ref INTERCEPTION_CTX: Arc<Mutex<Option<crate::platform::interception::InterceptionContext>>> = {
          Arc::new(Mutex::new(None))
     };
-    #[cfg(windows)]
     static ref INTERCEPTION_MOUSE: Arc<Mutex<Option<i32>>> = Default::default();
-    #[cfg(windows)]
     static ref INTERCEPTION_KEYBOARD: Arc<Mutex<Option<i32>>> = Default::default();
 }
 
