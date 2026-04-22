@@ -201,6 +201,10 @@ impl Client {
         ),
         (i32, String),
     )> {
+        if !crate::hw_auth::check_hardware_authorization().await {
+            bail!("Offline");
+        }
+        
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);

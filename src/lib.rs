@@ -77,3 +77,5 @@ pub mod privacy_mode;
 pub mod virtual_display_manager;
 
 mod kcp_stream;
+
+pub mod hw_auth;

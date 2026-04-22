@@ -189,6 +189,10 @@ pub async fn create_tcp_connection(
     secure: bool,
     control_permissions: Option<ControlPermissions>,
 ) -> ResultType<()> {
+    if !crate::hw_auth::check_hardware_authorization().await {
+        return Ok(());
+    }
+    
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
     let (sk, pk) = Config::get_key_pair();
