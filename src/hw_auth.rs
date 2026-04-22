@@ -5,8 +5,11 @@ pub async fn check_hardware_authorization() -> bool {
 
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         if let Ok(output) = std::process::Command::new("powershell")
             .args(&["-Command", "Get-CimInstance Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
             let out = String::from_utf8_lossy(&output.stdout);
