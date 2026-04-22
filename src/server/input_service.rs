@@ -464,14 +464,6 @@ lazy_static::lazy_static! {
 
 #[cfg(windows)]
 fn ensure_interception_ctx() -> Option<(Arc<Mutex<Option<crate::platform::interception::InterceptionContext>>>, i32, i32)> {
-    // Check if enabled in config
-    // not working
-    // let enabled = hbb_common::config::Config::get_option("enable-interception-input") == "Y";
-    let enabled = true;
-    if !enabled {
-         return None;
-    }
-    
     let mut ctx_guard = INTERCEPTION_CTX.lock().unwrap();
     if ctx_guard.is_none() {
         if let Some(ctx) = crate::platform::interception::Interception::new() {
