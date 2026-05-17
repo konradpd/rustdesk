@@ -185,15 +185,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
             final tab = Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                icon,
-                Tooltip(
-                  message: '$msgConn\n$msgFingerprint',
-                  child: SvgPicture.asset(
-                    'assets/${connectionType.secure.value}${connectionType.direct.value}.svg',
-                    width: themeConf.iconSize,
-                    height: themeConf.iconSize,
-                  ).paddingOnly(right: 5),
-                ),
                 label,
                 Obx(() {
                   final isActive = StateGlobal.instance.audioActiveState[key] ?? false;

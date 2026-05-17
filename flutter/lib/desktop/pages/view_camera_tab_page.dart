@@ -172,15 +172,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
             final tab = Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                icon,
-                Tooltip(
-                  message: '$msgConn\n$msgFingerprint',
-                  child: SvgPicture.asset(
-                    'assets/${connectionType.secure.value}${connectionType.direct.value}.svg',
-                    width: themeConf.iconSize,
-                    height: themeConf.iconSize,
-                  ).paddingOnly(right: 5),
-                ),
                 label,
                 unreadMessageCountBuilder(UnreadChatCountState.find(key))
                     .marginOnly(left: 4),

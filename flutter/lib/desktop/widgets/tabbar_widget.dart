@@ -1067,22 +1067,12 @@ class _TabState extends State<_Tab> with RestorationMixin {
   final RestorableBool restoreHover = RestorableBool(false);
 
   Widget _buildTabContent() {
-    bool showIcon =
-        widget.selectedIcon != null && widget.unselectedIcon != null;
     bool isSelected = widget.index == widget.selected;
 
-    final icon = Offstage(
-        offstage: !showIcon,
-        child: Icon(
-          isSelected ? widget.selectedIcon : widget.unselectedIcon,
-          size: _kIconSize,
-          color: isSelected
-              ? MyTheme.tabbar(context).selectedTabIconColor
-              : MyTheme.tabbar(context).unSelectedTabIconColor,
-        ).paddingOnly(right: 5));
+    final icon = Offstage();
     final labelWidget = Obx(() {
       return ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: widget.maxLabelWidth ?? 200),
+          constraints: BoxConstraints(maxWidth: widget.maxLabelWidth ?? 80),
           child: Tooltip(
             message:
                 widget.tabType == DesktopTabType.main ? '' : widget.label.value,
