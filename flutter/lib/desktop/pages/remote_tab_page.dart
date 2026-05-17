@@ -191,8 +191,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                   // Always show indicator, red for silence, green for active
                   return Icon(Icons.volume_up,
                       size: themeConf.iconSize - 4,
-                      color: isActive ? Colors.green : Colors.red)
-                      .paddingOnly(left: 5);
+                      color: isActive ? Colors.green : Colors.red);
                 }),
                 unreadMessageCountBuilder(UnreadChatCountState.find(key))
                     .marginOnly(left: 4),

@@ -1243,8 +1243,7 @@ class _CloseButton extends StatelessWidget {
               } else {
                 return Offstage();
               }
-            }())
-        .paddingOnly(left: 10);
+            }());
   }
 }
 
