@@ -452,6 +452,43 @@ impl Enigo {
         }
     }
 
+    /// Resolves `key` to the virtual key code that produces it on the active
+    /// keyboard layout, together with the modifier keys that have to be held
+    /// down while it is pressed. `Key::Layout` may need Shift/Control/Alt to be
+    /// reachable, e.g. an uppercase letter or `?` on a US layout.
+    ///
+    /// Returns `None` when the key is not reachable on the active layout.
+    ///
+    /// `key_down` does this resolution internally and then goes through
+    /// `SendInput`. It is exposed here for input backends that need the virtual
+    /// key code itself, e.g. to translate it into a scancode.
+    pub fn key_to_vk(&self, key: Key) -> Option<(u16, Vec<Key>)> {
+        match key {
+            Key::Layout(c) => {
+                let code = self.get_layoutdependent_keycode(c);
+                if code == 0xFFFF {
+                    return None;
+                }
+                let vk = code & 0x00FF;
+                if vk == 0 {
+                    return None;
+                }
+                let flag = code >> 8;
+                let mut modifiers = Vec::new();
+                for (pos, modifier) in [Key::Shift, Key::Control, Key::Alt].iter().enumerate() {
+                    if flag & (0x0001 << pos) != 0 {
+                        modifiers.push(*modifier);
+                    }
+                }
+                Some((vk, modifiers))
+            }
+            _ => match self.key_to_keycode(key) {
+                0 | 0xFFFF => None,
+                code => Some((code, Vec::new())),
+            },
+        }
+    }
+
     fn get_layoutdependent_keycode(&self, chr: char) -> u16 {
         unsafe {
             LAYOUT = std::ptr::null_mut();

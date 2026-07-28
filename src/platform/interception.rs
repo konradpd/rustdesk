@@ -93,7 +93,7 @@ pub fn mouse_up(ctx: &Interception, mouse_dev: i32, btn: MouseButton) {
     ctx.send(mouse_dev, &[stroke]);
 }
 
-use winapi::um::winuser::{GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN};
+use winapi::um::winuser::{GetForegroundWindow, GetKeyboardLayout, GetSystemMetrics, GetWindowThreadProcessId, MapVirtualKeyExW, MAPVK_VK_TO_VSC_EX, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN};
 
 pub fn mouse_move(ctx: &Interception, mouse_dev: i32, x: i32, y: i32) {
     let mut flags = MouseFlags::MOVE_ABSOLUTE | MouseFlags::VIRTUAL_DESKTOP;
@@ -149,6 +149,38 @@ pub fn mouse_scroll(ctx: &Interception, mouse_dev: i32, amount: i32) {
         information: 0,
     };
     ctx.send(mouse_dev, &[stroke]);
+}
+
+/// Maps a virtual key code to the physical scancode that produces it on the
+/// keyboard layout of the foreground window.
+///
+/// Extended keys (arrows, right ctrl/alt, ...) come back with the `0xE0` prefix
+/// in the high byte, which [`key_stroke_prefixed`] turns into `KeyState::E0`.
+pub fn vk_to_scancode(vk: u16) -> Option<u16> {
+    let scan = unsafe {
+        let layout = GetKeyboardLayout(GetWindowThreadProcessId(
+            GetForegroundWindow(),
+            std::ptr::null_mut(),
+        ));
+        MapVirtualKeyExW(vk as _, MAPVK_VK_TO_VSC_EX, layout) as u16
+    };
+    if scan == 0 {
+        None
+    } else {
+        Some(scan)
+    }
+}
+
+/// Sends a scancode that still carries its `0xE0` extended-key prefix, as
+/// returned by [`vk_to_scancode`] or received from a client in map mode.
+pub fn key_stroke_prefixed(ctx: &Interception, kbd_dev: i32, scan: u16, down: bool) {
+    let mut code = scan;
+    let mut state = if down { KeyState::empty() } else { KeyState::UP };
+    if code & 0xFF00 == 0xE000 {
+        code &= 0xFF;
+        state.insert(KeyState::E0);
+    }
+    key_stroke(ctx, kbd_dev, code, state);
 }
 
 pub fn key_stroke(ctx: &Interception, kbd_dev: i32, code: u16, state: KeyState) {

@@ -505,6 +505,77 @@ fn ensure_interception_ctx() -> Option<(Arc<Mutex<Option<crate::platform::interc
     }
 }
 
+// Send a single key through the Interception driver instead of `SendInput`.
+//
+// Applications that filter injected input drop `SendInput` events but accept
+// strokes coming from the driver. `simulate_` already routes map mode through
+// Interception, but not the legacy path, which is what mobile clients send:
+// their soft keyboards produce `Chr`/`ControlKey` events, never scancodes.
+//
+// Returns false when Interception is unavailable or the key is not reachable on
+// the active layout, so that the caller can fall back to enigo.
+#[cfg(windows)]
+fn interception_key(en: &Enigo, key: Key, down: bool) -> bool {
+    use crate::platform::interception::{key_stroke_prefixed, vk_to_scancode};
+
+    let (ctx_arc, _, kbd_dev) = match ensure_interception_ctx() {
+        Some(v) => v,
+        None => return false,
+    };
+    if kbd_dev <= 0 {
+        return false;
+    }
+    let (vk, modifiers) = match en.key_to_vk(key) {
+        Some(v) => v,
+        None => return false,
+    };
+    let scan = match vk_to_scancode(vk) {
+        Some(v) => v,
+        None => return false,
+    };
+    let ctx_guard = ctx_arc.lock().unwrap();
+    let ctx = match ctx_guard.as_ref() {
+        Some(v) => v,
+        None => return false,
+    };
+
+    // The layout may need modifiers to reach the character, e.g. Shift for an
+    // uppercase letter. Hold them around the press only, like `Enigo::key_down`.
+    let mut held = Vec::new();
+    if down {
+        for m in modifiers {
+            if let Some(scan) = en.key_to_vk(m).and_then(|(vk, _)| vk_to_scancode(vk)) {
+                key_stroke_prefixed(ctx, kbd_dev, scan, true);
+                held.push(scan);
+            }
+        }
+    }
+    key_stroke_prefixed(ctx, kbd_dev, scan, down);
+    for scan in held.into_iter().rev() {
+        key_stroke_prefixed(ctx, kbd_dev, scan, false);
+    }
+    true
+}
+
+// enigo's `SendInput` path, but through Interception when it is available.
+#[inline]
+fn key_down_(en: &mut Enigo, key: Key) -> bool {
+    #[cfg(windows)]
+    if interception_key(en, key, true) {
+        return true;
+    }
+    en.key_down(key).is_ok()
+}
+
+#[inline]
+fn key_up_(en: &mut Enigo, key: Key) {
+    #[cfg(windows)]
+    if interception_key(en, key, false) {
+        return;
+    }
+    en.key_up(key);
+}
+
 #[inline]
 fn set_relative_mouse_active(conn: i32, active: bool) {
     let mut lock = RELATIVE_MOUSE_CONNS.lock().unwrap();
@@ -885,7 +956,7 @@ pub fn release_device_modifiers() {
         Key::RWin,
     ] {
         if get_modifier_state(modifier, &mut en) {
-            en.key_up(modifier);
+            key_up_(&mut en, modifier);
         }
     }
 }
@@ -898,7 +969,7 @@ fn release_record_key(record_key: KeysDown) {
         }
         KeysDown::EnigoKey(key) => {
             if let Some(key) = record_key_to_key(key) {
-                ENIGO.lock().unwrap().key_up(key);
+                key_up_(&mut ENIGO.lock().unwrap(), key);
                 log::debug!("Fixed {:?} timeout", key);
             }
         }
@@ -940,7 +1011,7 @@ fn fix_modifier(
             // AltGr case
             return;
         }
-        en.key_up(key1);
+        key_up_(en, key1);
         log::debug!("Fixed {:?}", key1);
     }
 }
@@ -1570,33 +1641,28 @@ fn simulate_(event_type: &EventType) {
     if let Some((ctx_arc, _, kbd_dev)) = ensure_interception_ctx() {
         if kbd_dev > 0 {
             if let Some(ctx) = ctx_arc.lock().unwrap().as_ref() {
-                 use crate::platform::interception::{key_stroke, KeyState};
-                 let convert = |key: &rdev::Key, down: bool| -> Option<(u16, KeyState)> {
+                 use crate::platform::interception::{key_stroke_prefixed, vk_to_scancode};
+                 let convert = |key: &rdev::Key| -> Option<u16> {
                     match key {
                         rdev::Key::RawKey(raw) => match raw {
-                            rdev::RawKey::ScanCode(sc) => {
-                                let mut code = *sc as u16;
-                                let mut state = if down { KeyState::empty() } else { KeyState::UP };
-                                if code & 0xFF00 == 0xE000 {
-                                    code = code & 0xFF;
-                                    state.insert(KeyState::E0);
-                                }
-                                Some((code, state))
-                            }
-                            _ => None, 
+                            rdev::RawKey::ScanCode(sc) => Some(*sc as u16),
+                            // Translate mode sends virtual key codes for keys
+                            // that have no position on the peer layout.
+                            rdev::RawKey::WinVirtualKeycode(vk) => vk_to_scancode(*vk as u16),
+                            _ => None,
                         },
                         _ => None,
                     }
                 };
-                
+
                 let res = match event_type {
-                    EventType::KeyPress(key) => convert(key, true),
-                    EventType::KeyRelease(key) => convert(key, false),
+                    EventType::KeyPress(key) => convert(key).map(|scan| (scan, true)),
+                    EventType::KeyRelease(key) => convert(key).map(|scan| (scan, false)),
                     _ => None,
                 };
 
-                if let Some((code, state)) = res {
-                    key_stroke(ctx, kbd_dev, code, state);
+                if let Some((scan, down)) = res {
+                    key_stroke_prefixed(ctx, kbd_dev, scan, down);
                     return;
                 }
             }
@@ -1686,7 +1752,7 @@ fn press_modifiers(en: &mut Enigo, key_event: &KeyEvent, to_release: &mut Vec<Ke
                 if key == Key::Alt && is_altgr_pressed() {
                     continue;
                 }
-                en.key_down(key.clone()).ok();
+                key_down_(en, key.clone());
                 to_release.push(key.clone());
                 #[cfg(windows)]
                 modifier_sleep();
@@ -1709,9 +1775,9 @@ fn sync_modifiers(en: &mut Enigo, key_event: &KeyEvent, _to_release: &mut Vec<Ke
 fn process_control_key(en: &mut Enigo, ck: &EnumOrUnknown<ControlKey>, down: bool) {
     if let Some(key) = control_key_value_to_key(ck.value()) {
         if down {
-            en.key_down(key).ok();
+            key_down_(en, key);
         } else {
-            en.key_up(key);
+            key_up_(en, key);
         }
     }
 }
@@ -1725,8 +1791,7 @@ fn process_chr(en: &mut Enigo, chr: u32, down: bool) {
     let key = char_value_to_key(chr);
 
     if down {
-        if en.key_down(key).is_ok() {
-        } else {
+        if !key_down_(en, key) {
             if let Ok(chr) = char::try_from(chr) {
                 let mut s = chr.to_string();
                 if need_to_uppercase(en) {
@@ -1736,7 +1801,7 @@ fn process_chr(en: &mut Enigo, chr: u32, down: bool) {
             };
         }
     } else {
-        en.key_up(key);
+        key_up_(en, key);
     }
 }
 
@@ -1753,7 +1818,7 @@ fn process_seq(en: &mut Enigo, sequence: &str) {
 #[cfg(not(target_os = "macos"))]
 fn release_keys(en: &mut Enigo, to_release: &Vec<Key>) {
     for key in to_release {
-        en.key_up(key.clone());
+        key_up_(en, key.clone());
     }
 }
 
