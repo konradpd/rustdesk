@@ -898,6 +898,17 @@ class FfiModel with ChangeNotifier {
     final text = evt['text'];
     final link = evt['link'];
 
+    // A session that is already up and then drops is reported as an error
+    // msgbox by the client loop, whatever the reason was ("Closed manually by
+    // the peer", "Reset by the peer", "Timeout", ...). Raise the disconnect
+    // alert for it: the dialog below is only visible on the focused tab, so
+    // without this a peer going away on a background tab goes unnoticed.
+    // `pi.isSet` keeps connection attempts that never succeeded out of it, and
+    // the alert only makes sense on desktop, where the tab indicator lives.
+    if (type == 'error' && isDesktop && pi.isSet.isTrue) {
+      stateGlobal.notifyPeerDisconnected(peerId);
+    }
+
     // Disable relative mouse mode on any error-type message to ensure cursor is released.
     // This includes connection errors, session-ending messages, elevation errors, etc.
     // Safety: releasing pointer lock on errors prevents the user from being stuck.
@@ -1396,6 +1407,8 @@ class FfiModel with ChangeNotifier {
     }
 
     _pi.isSet.value = true;
+    // The session is up (again), so any pending disconnect alert is stale.
+    stateGlobal.clearPeerDisconnected(peerId);
     stateGlobal.resetLastResolutionGroupValues(peerId);
 
     if (isDesktop || isWebDesktop) {

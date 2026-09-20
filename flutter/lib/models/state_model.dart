@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/native/alert_sound.dart'
+    if (dart.library.html) 'package:flutter_hbb/web/alert_sound.dart';
 import 'package:get/get.dart';
 
 import '../consts.dart';
@@ -40,6 +42,49 @@ class StateGlobal {
   // Track audio activity for each peer connection.
   final RxMap<String, bool> audioActiveState = <String, bool>{}.obs;
   final Map<String, Timer> _audioTimers = {};
+
+  // Peers whose already-established session was dropped from the remote side.
+  // The flag is kept until the user acknowledges it by focusing that tab, so a
+  // disconnect stays noticeable while several peers are connected and the
+  // error dialog of a background tab is not visible.
+  final RxMap<String, bool> peerDisconnectedState = <String, bool>{}.obs;
+  final Map<String, Timer> _disconnectBeepTimers = {};
+
+  bool isPeerDisconnected(String peerId) =>
+      peerDisconnectedState[peerId] == true;
+
+  // Raise the disconnect alert for [peerId]: blink its tab indicator and play
+  // the alert sound. Calls for a peer that is already flagged are ignored, so
+  // a session that keeps retrying does not beep on every attempt.
+  notifyPeerDisconnected(String peerId) {
+    if (isPeerDisconnected(peerId)) {
+      return;
+    }
+    _disconnectBeepTimers.remove(peerId)?.cancel();
+    peerDisconnectedState[peerId] = true;
+    playAlertSound_();
+    if (kPeerDisconnectBeepCount <= 1) {
+      return;
+    }
+    var played = 1;
+    _disconnectBeepTimers[peerId] =
+        Timer.periodic(kPeerDisconnectBeepInterval, (timer) {
+      if (!isPeerDisconnected(peerId) || played >= kPeerDisconnectBeepCount) {
+        timer.cancel();
+        _disconnectBeepTimers.remove(peerId);
+        return;
+      }
+      played += 1;
+      playAlertSound_();
+    });
+  }
+
+  // Clear the disconnect alert for [peerId], because the user acknowledged it,
+  // the session reconnected, or the tab was closed.
+  clearPeerDisconnected(String peerId) {
+    _disconnectBeepTimers.remove(peerId)?.cancel();
+    peerDisconnectedState.remove(peerId);
+  }
 
   updateAudioLevel(String peerId, double level) {
     if (level > 0.001) { // Threshold
