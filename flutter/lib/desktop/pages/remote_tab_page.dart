@@ -74,6 +74,8 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         WindowController.fromWindowId(params['windowId'])
             .setTitle(getWindowNameWithId(id));
         UnreadChatCountState.find(id).value = 0;
+        // Looking at the tab acknowledges a disconnect alert raised for it.
+        stateGlobal.clearPeerDisconnected(id);
       };
       tabController.add(TabInfo(
         key: peerId!,
@@ -195,14 +197,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                   ).paddingOnly(right: 5),
                 ),
                 label,
-                Obx(() {
-                  final isActive = StateGlobal.instance.audioActiveState[key] ?? false;
-                  // Always show indicator, red for silence, green for active
-                  return Icon(Icons.volume_up,
-                      size: themeConf.iconSize - 4,
-                      color: isActive ? Colors.green : Colors.red)
-                      .paddingOnly(left: 5);
-                }),
+                _TabSoundIndicator(
+                    key: ValueKey(key),
+                    peerId: key,
+                    iconSize: themeConf.iconSize - 4),
                 unreadMessageCountBuilder(UnreadChatCountState.find(key))
                     .marginOnly(left: 4),
               ],
@@ -397,6 +395,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     ConnectionTypeState.delete(id);
     // Clean up relative mouse mode state for this peer.
     stateGlobal.relativeMouseModeState.remove(id);
+    // Clean up the audio/disconnect indicator state for this peer.
+    stateGlobal.audioActiveState.remove(id);
+    stateGlobal.clearPeerDisconnected(id);
     _update_remote_count();
   }
 
@@ -634,6 +635,84 @@ class _RelativeMouseModeHint extends StatelessWidget {
           ],
         ),
       );
+    });
+  }
+}
+
+// The speaker icon of a remote tab.
+//
+// A steady icon mirrors whether the peer is currently sending audio, green for
+// active and red for silent. When the peer drops the session the icon turns
+// amber and blinks until the user focuses that tab, which is what makes a
+// disconnect visible while working in another tab.
+class _TabSoundIndicator extends StatefulWidget {
+  final String peerId;
+  final double iconSize;
+
+  const _TabSoundIndicator(
+      {super.key, required this.peerId, required this.iconSize});
+
+  @override
+  State<_TabSoundIndicator> createState() => _TabSoundIndicatorState();
+}
+
+class _TabSoundIndicatorState extends State<_TabSoundIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: kPeerDisconnectBlinkInterval,
+  );
+  late final Worker _disconnectWorker;
+
+  bool get _disconnected => stateGlobal.isPeerDisconnected(widget.peerId);
+
+  @override
+  void initState() {
+    super.initState();
+    // The ticker has to be driven outside of build(), so follow the flag here
+    // instead of reacting to it in the Obx below.
+    _syncBlink();
+    _disconnectWorker =
+        ever(stateGlobal.peerDisconnectedState, (_) => _syncBlink());
+  }
+
+  @override
+  void dispose() {
+    _disconnectWorker.dispose();
+    _blink.dispose();
+    super.dispose();
+  }
+
+  void _syncBlink() {
+    if (!mounted) {
+      return;
+    }
+    if (_disconnected) {
+      if (!_blink.isAnimating) {
+        _blink.repeat(reverse: true);
+      }
+    } else if (_blink.isAnimating) {
+      _blink.stop();
+      _blink.value = 1.0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (_disconnected) {
+        return FadeTransition(
+          opacity: _blink,
+          child: Icon(Icons.volume_off,
+              size: widget.iconSize, color: Colors.amber),
+        ).paddingOnly(left: 5);
+      }
+      final isActive = stateGlobal.audioActiveState[widget.peerId] ?? false;
+      // Always show the indicator, red for silence, green for active.
+      return Icon(Icons.volume_up,
+              size: widget.iconSize,
+              color: isActive ? Colors.green : Colors.red)
+          .paddingOnly(left: 5);
     });
   }
 }

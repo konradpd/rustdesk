@@ -408,6 +408,14 @@ const double kScaleCustomDetentEpsilon =
     0.006; // snap range around pivot (~0.6%)
 const Duration kDebounceCustomScaleDuration = Duration(milliseconds: 300);
 
+// Peer disconnect alert related constants
+// How many times the alert sound is played when a peer drops the session.
+const int kPeerDisconnectBeepCount = 2;
+const Duration kPeerDisconnectBeepInterval = Duration(milliseconds: 450);
+// Half period of the blinking tab indicator, shown until the user acknowledges
+// the disconnect by focusing that tab.
+const Duration kPeerDisconnectBlinkInterval = Duration(milliseconds: 550);
+
 // ================================ mobile ================================
 
 // Magic numbers, maybe need to avoid it or use a better way to get them.
